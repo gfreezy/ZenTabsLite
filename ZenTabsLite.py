@@ -21,6 +21,7 @@ def plugin_loaded():
     global g_tabLimit
     settings = sublime.load_settings('ZenTabsLite.sublime-settings')
     g_tabLimit = settings.get('open_tab_limit', g_tabLimit)
+    print('Tab Limit is %s' % g_tabLimit)
 
 
 if not sublime_text_3():
@@ -62,11 +63,11 @@ def close_view(view, fallback):
 
 
 class ViewGroup(object):
-    def __init__(self, id, capacity=g_tabLimit):
+    def __init__(self, id):
         # id (window, group)
         self.id = id
         self.update_time = {}
-        self.capacity = capacity
+        self.capacity = g_tabLimit
 
     def add(self, active_view):
         window = active_view.window()
