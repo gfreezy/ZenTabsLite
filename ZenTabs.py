@@ -1,6 +1,5 @@
-import os
 import sys
-from functools import wraps
+import time
 import sublime
 import sublime_plugin
 
@@ -14,35 +13,14 @@ def sublime_text_3():
     except ValueError:
         return sys.hexversion >= 0x030000F0
 
-if not sublime_text_3():
-    from TabsWorker import WindowTabs
-else:
-    from .TabsWorker import WindowTabs
-
 
 g_tabLimit = 50
-g_showFullPath = False
-g_selectedItems = 1
-is_debug_enabled = False
-win_tabs = WindowTabs()
 
 
 def plugin_loaded():
     global g_tabLimit
-    global g_showFullPath
-    global is_debug_enabled
     settings = sublime.load_settings('ZenTabs.sublime-settings')
     g_tabLimit = settings.get('open_tab_limit', g_tabLimit)
-    g_showFullPath = settings.get('show_full_path', g_showFullPath)
-    is_debug_enabled = settings.get('debug', is_debug_enabled)
-    highlight_modified_tabs = settings.get('highlight_modified_tabs', -1)
-    if highlight_modified_tabs != -1:
-        global_settings = sublime.load_settings("Preferences.sublime-settings")
-        global_settings.set("highlight_modified_tabs", highlight_modified_tabs)
-        sublime.save_settings("Preferences.sublime-settings")
-    print("Limit: " + str(g_tabLimit))
-    print("Full path: " + str(g_showFullPath))
-    print("Highlight: " + str(highlight_modified_tabs))
 
 
 if not sublime_text_3():
@@ -63,179 +41,83 @@ def is_edited(view):
 
 
 def is_closable(view):
-    is_not_closable = is_edited() \
-                    or is_preview(view) \
-                    or is_active(view) \
-                    or view.is_loading()
-
+    is_not_closable = is_edited(view) or is_preview(view) or is_active(view) or view.is_loading()
     return not(is_not_closable)
 
 
-def Logger(function=None, msg="Debug", full=True):
-    def LOG(function):
-        @wraps(function)
-        def wrapper(*args, **kwargs):
-            responce = function(*args, **kwargs)
-            if is_debug_enabled:
-                print("======== " + str(msg) + " ========")
-                if full:
-                    print("e_tabs", " ".join(str(v_id) for v_id in win_tabs.edited_tab_ids))
-                    print("o_tabs", " ".join(str(v_id) for v_id in win_tabs.opened_tab_ids))
-                    print("w_tabs", " ".join(str(v.id()) for v in sublime.active_window().views()))
-            return responce
+_to_be_closed_view = None
+_to_be_open_view = None
 
-        return wrapper
 
-    if not function:  # User passed in a name argument
-        def waiting_for_func(function):
-            return LOG(function)
-        return waiting_for_func
+def close_view(view, fallback):
+    global _to_be_closed_view, _to_be_open_view
+    _to_be_closed_view = view.id()
+    _to_be_open_view = fallback.id()
+    window = view.window()
+    window.focus_view(view)
+    window.run_command('close')
+    window.focus_view(fallback)
+    window = view.window()
+    _to_be_open_view = _to_be_closed_view = None
 
-    else:
-        return LOG(function)
+
+class ViewGroup(object):
+    def __init__(self, id, capacity=g_tabLimit):
+        # id (window, group)
+        self.id = id
+        self.update_time = {}
+        self.capacity = capacity
+
+    def add(self, active_view):
+        window = active_view.window()
+        window = active_view.window()
+        active_group = window.active_group()
+        views = window.views_in_group(active_group)
+        self.update_view_time(active_view)
+
+        views_with_update_time = []
+        for v in views:
+            update_time = self.update_time.get(v.id())
+            if not update_time:
+                update_time = 0
+            views_with_update_time.append((v, update_time))
+        views_with_update_time.sort(key=lambda t: t[1])
+
+        if len(views) <= self.capacity:
+            return
+
+        for i, (view, _) in enumerate(views_with_update_time):
+            if is_closable(view):
+                views_with_update_time.pop(i)
+                close_view(view, active_view)
+                break
+
+        self.update_time = dict([(v.id(), update_time_) for v, update_time_ in views_with_update_time])
+
+    def update_view_time(self, view):
+        self.update_time[view.id()] = time.time()
 
 
 class ZenTabsListener(sublime_plugin.EventListener):
-    window_id = 0
+    def __init__(self, *args, **kwargs):
+        self.tabs = dict()
+        return super(ZenTabsListener, self).__init__(*args, **kwargs)
 
-    @Logger(msg="on_close")
-    def on_close(self, view):
-        win_tabs.remove_from_list(win_tabs.opened_tab_ids, view.id())
-
-    @Logger(msg="on_activated")
     def on_activated(self, view):
-        if sublime.active_window() is not None and sublime.active_window().id() != self.window_id:
-            self.window_id = sublime.active_window().id()
+        global _to_be_closed_view, _to_be_open_view
+        if view.id() == _to_be_closed_view or view.id() == _to_be_open_view:
+            return
+        window = view.window()
+        group_id, view_id = window.get_view_index(view)
 
-            win_tabs.opened_tab_ids, win_tabs.edited_tab_ids = [], []
-            for view in sublime.active_window().views():
-                if is_edited(view):
-                    win_tabs.renew_list(win_tabs.edited_tab_ids, view.id())
-                else:
-                    win_tabs.renew_list(win_tabs.opened_tab_ids, view.id())
+        if group_id == -1 or view_id == -1:
+            return
+        window_id = window.id()
+        id = (window_id, group_id)
+        try:
+            view_group = self.tabs[id]
+        except KeyError:
+            view_group = ViewGroup(id)
+            self.tabs[id] = view_group
 
-        sublime.set_timeout(lambda: self.process(view.id()), 200)
-
-    @Logger(msg="on_post_save")
-    def on_post_save(self, view):
-        win_tabs.remove_from_list(win_tabs.edited_tab_ids, view.id())
-        win_tabs.renew_list(win_tabs.opened_tab_ids, view.id())
-
-    @Logger(msg="on_modified")
-    def on_modified(self, view):
-        if view.is_dirty():
-            win_tabs.renew_list(win_tabs.edited_tab_ids, view.id())
-            win_tabs.remove_from_list(win_tabs.opened_tab_ids, view.id())
-        else:
-            win_tabs.renew_list(win_tabs.opened_tab_ids, view.id())
-            win_tabs.remove_from_list(win_tabs.edited_tab_ids, view.id())
-
-    def process(self, view_id):
-        if view_id not in win_tabs.edited_tab_ids:
-            win_tabs.renew_list(win_tabs.opened_tab_ids, view_id)
-        if len(sublime.active_window().views()) - len(win_tabs.edited_tab_ids) > g_tabLimit:
-            self.close_last_tab()
-
-    def close_last_tab(self):
-        index = 0
-        active_window = sublime.active_window()
-        active_view_id = sublime.active_window().active_view().id()
-        while len(active_window.views()) - len(win_tabs.edited_tab_ids) > g_tabLimit:
-            view_id = win_tabs.opened_tab_ids[index]
-            view = win_tabs.get_view_by_id(view_id)
-            win_tabs.remove_from_list(win_tabs.opened_tab_ids, view_id)
-
-            if view:
-                if not view.is_dirty() and not view.is_scratch():
-                    active_window.focus_view(view)
-                    active_window.run_command('close')
-                    if win_tabs.get_view_by_id(active_view_id):
-                        active_window.focus_view(win_tabs.get_view_by_id(active_view_id))
-                else:
-                    win_tabs.edited_tab_ids.append(view_id)
-
-            if index < len(win_tabs.opened_tab_ids):
-                index += 1
-            else:
-                break
-
-    def set_tabs_visibility(self):
-        if len(sublime.active_window().views()) == 1:
-            sublime.active_window().run_command('toggle_tabs')
-
-
-class ZenTabsReloadCommand(sublime_plugin.TextCommand):
-    def run(self, edit):
-        plugin_loaded()
-
-
-class SwitchTabsCommand(sublime_plugin.TextCommand):
-
-    def run(self, edit):
-        self.window = sublime.active_window()
-        self.active_view = self.window.active_view()
-        self.name_list = []
-        self.view_list = []
-
-        view_ids = reversed(win_tabs.edited_tab_ids)
-        self.prepare_lists(view_ids)
-        view_ids = reversed(win_tabs.opened_tab_ids)
-        self.prepare_lists(view_ids)
-
-        self.window.run_command("hide_overlay")
-        self.window.show_quick_panel(self.name_list, self.on_done, False, g_selectedItems)
-        self.next_item(len(self.name_list))
-
-    def prepare_lists(self, view_ids):
-        for view_id in view_ids:
-            view = win_tabs.get_view_by_id(view_id)
-            if view is None:
-                win_tabs.remove_from_list(win_tabs.opened_tab_ids, view_id)
-                win_tabs.remove_from_list(win_tabs.edited_tab_ids, view_id)
-                break
-
-            is_current = self.window.get_view_index(self.active_view) == self.window.get_view_index(view)
-            is_draft = view.file_name() is None
-
-            if is_draft:
-                name = view.name()
-                #set the view name to untitled if we get an empty name
-                if len(name) == 0:
-                    name = "untitled"
-            else:
-                name = os.path.basename(view.file_name())
-
-            if is_current:
-                name += "\t^"  # current
-            if view.file_name() is None or view.is_dirty():
-                name += "\t*"  # unsaved
-            if view.is_read_only():
-                name += "\t#"  # read only
-
-            self.add_element(is_current, self.view_list, view)
-            if g_showFullPath and not is_draft:
-                caption = os.path.dirname(view.file_name())
-                self.add_element(is_current, self.name_list, [name, caption])
-            else:
-                self.add_element(is_current, self.name_list, [name])
-
-    def next_item(self, list_size):
-        global g_selectedItems
-        if g_selectedItems >= list_size - 1:
-            g_selectedItems = 0
-        else:
-            g_selectedItems += 1
-
-    def on_done(self, index):
-        global g_selectedItems
-        if index > -1:
-            g_selectedItems = 1
-            sublime.active_window().focus_view(self.view_list[index])
-        self.name_list = []
-        self.view_list = []
-
-    def add_element(self, is_current, list, element):
-        if is_current:
-            list.insert(0, element)
-        else:
-            list.append(element)
+        view_group.add(view)

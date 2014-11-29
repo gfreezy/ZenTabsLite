@@ -17,32 +17,14 @@
                         [
                             {
                                 "command": "open_file",
-                                "args": {"file": "${packages}/Zen Tabs/TODO.todo"},
-                                "caption": "Todo"
-                            },
-                            { "caption": "-" },
-                            {
-                                "command": "open_file",
                                 "args": {"file": "${packages}/Zen Tabs/ZenTabs.sublime-settings"},
                                 "caption": "Settings – Default"
                             },
                             {
-                                "command": "open_file", 
+                                "command": "open_file",
                                 "args": {"file": "${packages}/User/ZenTabs.sublime-settings"},
                                 "caption": "Settings – User"
                             },
-                            { "caption": "-" },
-                            {
-                                "command": "open_file",
-                                "args": {"file": "${packages}/Zen Tabs/Default.sublime-keymap"},
-                                "caption": "Key Bindings – Default"
-                            },
-                            {
-                                "command": "open_file", 
-                                "args": {"file": "${packages}/User/Default.sublime-keymap"},
-                                "caption": "Key Bindings – User"
-                            },
-                            { "caption": "-" }
                         ]
                     }
                 ]
