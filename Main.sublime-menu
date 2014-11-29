@@ -12,17 +12,17 @@
                 "children":
                 [
                     {
-                        "caption": "Zen Tabs",
+                        "caption": "Zen Tabs Lite",
                         "children":
                         [
                             {
                                 "command": "open_file",
-                                "args": {"file": "${packages}/Zen Tabs/ZenTabs.sublime-settings"},
+                                "args": {"file": "${packages}/Zen Tabs Lite/ZenTabsLite.sublime-settings"},
                                 "caption": "Settings – Default"
                             },
                             {
                                 "command": "open_file",
-                                "args": {"file": "${packages}/User/ZenTabs.sublime-settings"},
+                                "args": {"file": "${packages}/User/ZenTabsLite.sublime-settings"},
                                 "caption": "Settings – User"
                             },
                         ]

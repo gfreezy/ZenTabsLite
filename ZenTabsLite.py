@@ -19,7 +19,7 @@ g_tabLimit = 50
 
 def plugin_loaded():
     global g_tabLimit
-    settings = sublime.load_settings('ZenTabs.sublime-settings')
+    settings = sublime.load_settings('ZenTabsLite.sublime-settings')
     g_tabLimit = settings.get('open_tab_limit', g_tabLimit)
 
 
@@ -98,10 +98,10 @@ class ViewGroup(object):
         self.update_time[view.id()] = time.time()
 
 
-class ZenTabsListener(sublime_plugin.EventListener):
+class ZenTabsLiteListener(sublime_plugin.EventListener):
     def __init__(self, *args, **kwargs):
         self.tabs = dict()
-        return super(ZenTabsListener, self).__init__(*args, **kwargs)
+        return super(ZenTabsLiteListener, self).__init__(*args, **kwargs)
 
     def on_activated(self, view):
         global _to_be_closed_view, _to_be_open_view
