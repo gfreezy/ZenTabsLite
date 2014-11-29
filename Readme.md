@@ -40,6 +40,7 @@ To install this plugin, you have three options:
 `Preferences > Package Settings > Zen Tabs > Settings`
 * __open_tab_limit__: Controls the maximum allowed number of tabs.
 Note that edited or draft tabs are not count towards this limit. The default is 10.
+You need to restart Sublime Text to make the change work.
 
 ## Contribution
 You can contribute on [github](https://github.com/gfreezy/ZenTabsLite).
